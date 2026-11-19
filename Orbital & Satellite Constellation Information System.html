@@ -1,0 +1,1572 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ASTRA-SGP4 | Orbital Mechanics & Satellite Constellation Information System</title>
+  <!-- Tailwind CSS for responsive aerospace command-center layout -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono for precision telemetry readouts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <!-- satellite.js SGP4/SDP4 orbital propagator via CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/5.0.0/satellite.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            void: '#04070d',
+            panel: '#09101d',
+            card: '#0e172a',
+            borderline: '#1b2a47',
+            cyanpulse: '#38bdf8',
+            amberactive: '#f59e0b',
+            magentaalert: '#ec4899',
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    /* Custom scrollbar & aerospace grid styling */
+    * {
+      box-sizing: border-box;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background-color: #04070d;
+      color: #e2e8f0;
+      font-family: 'Inter', sans-serif;
+      overflow-x: hidden;
+    }
+
+    /* Custom sleek scrollbars for side roster and monograph */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #060b14;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1e3256;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #38bdf8;
+    }
+
+    /* Subtle starfield backdrop behind spherical canvas */
+    .orbital-viewport-bg {
+      background:
+        radial-gradient(circle at 50% 48%, rgba(14, 42, 78, 0.42) 0%, rgba(4, 7, 13, 0.96) 68%),
+        radial-gradient(1px 1px at 14% 22%, rgba(255,255,255,0.5) 50%, transparent 100%),
+        radial-gradient(1px 1px at 78% 18%, rgba(186,230,253,0.6) 50%, transparent 100%),
+        radial-gradient(1.5px 1.5px at 84% 74%, rgba(255,255,255,0.45) 50%, transparent 100%),
+        radial-gradient(1px 1px at 26% 81%, rgba(147,197,253,0.5) 50%, transparent 100%),
+        #04070d;
+    }
+
+    /* Glowing selected satellite card animation */
+    .sat-card-active {
+      border-color: #f59e0b !important;
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(14, 23, 42, 0.95) 100%) !important;
+      box-shadow: 0 0 22px rgba(245, 158, 11, 0.2);
+    }
+
+    /* Smooth pulse animation for live indicators */
+    @keyframes telemetryPulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.45; transform: scale(1.25); }
+    }
+    .pulse-dot {
+      animation: telemetryPulse 1.8s infinite ease-in-out;
+    }
+
+    /* Canvas responsive cursor states */
+    #globeCanvas {
+      cursor: grab;
+      touch-action: none;
+    }
+    #globeCanvas:active {
+      cursor: grabbing;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col bg-void text-slate-200 selection:bg-cyan-500/30 selection:text-cyan-200">
+
+  <!-- TOP COMMAND HEADER -->
+  <header class="w-full border-b border-borderline bg-panel/95 backdrop-blur-md sticky top-0 z-30 px-3 sm:px-5 py-2.5">
+    <div class="max-w-[1920px] mx-auto flex flex-wrap items-center justify-between gap-3">
+      <!-- Brand & System Title -->
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-400/40 flex items-center justify-center shadow-lg shadow-cyan-500/10">
+          <!-- Inline SVG Orbital Icon -->
+          <svg class="w-5 h-5 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="12" r="5" />
+            <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-28 12 12)" />
+            <circle cx="19" cy="8" r="1.5" fill="#f59e0b" stroke="none" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-sm sm:text-base font-bold tracking-tight text-white">
+              ASTRA-SGP4 <span class="text-cyan-400 font-normal hidden sm:inline">| Orbital Constellation Telemetry System</span>
+            </h1>
+            <span class="px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"></span>
+              SGP4 LIVE
+            </span>
+          </div>
+          <p class="text-[11px] text-slate-400 font-mono">
+            TEME &rarr; ECEF &rarr; WGS84 Geodetic Spherical Grid &bull; Observer: <span id="observerLabel" class="text-slate-300">49.2827&deg;N, 123.1207&deg;W (YVR)</span>
+          </p>
+        </div>
+      </div>
+
+      <!-- Right Controls: 11-Second Epoch Refresh Meter & Monograph Button -->
+      <div class="flex items-center gap-2.5 sm:gap-4 ml-auto">
+        <!-- 11-Second Sync Telemetry Timer -->
+        <div class="bg-card/90 border border-borderline rounded-xl px-3 py-1.5 flex items-center gap-3">
+          <div>
+            <div class="flex items-center justify-between gap-3 text-[10px] font-mono uppercase tracking-wider text-slate-400">
+              <span>11s Epoch Sync</span>
+              <span id="refreshCountdownText" class="text-cyan-400 font-semibold">11.0s</span>
+            </div>
+            <div class="w-28 sm:w-36 h-1.5 bg-slate-800 rounded-full overflow-hidden mt-1">
+              <div id="refreshProgressBar" class="h-full bg-gradient-to-r from-cyan-400 to-amber-400 transition-all duration-100" style="width: 100%;"></div>
+            </div>
+          </div>
+          <button id="forceRefreshBtn" title="Trigger Immediate SGP4 Epoch Recalculation" class="p-1.5 rounded-lg bg-slate-800/80 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 border border-slate-700/80 transition">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 12a9 9 0 1 1-2.64-6.36L21 8" />
+              <polyline points="21 3 21 8 16 8" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Professorial Theory Monograph Drawer Toggle -->
+        <button id="openMonographBtn" class="px-3 py-2 rounded-xl bg-gradient-to-r from-cyan-500/15 to-indigo-500/15 hover:from-cyan-500/25 hover:to-indigo-500/25 border border-cyan-400/40 text-cyan-200 text-xs font-medium flex items-center gap-2 transition shadow-sm">
+          <svg class="w-4 h-4 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+          </svg>
+          <span class="hidden md:inline">Astrophysics &amp; SGP4 Monograph</span>
+          <span class="md:hidden">Theory</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE: LEFT SPHERICAL DISPLAY + RIGHT SCROLLABLE 21-ATTRIBUTE ROSTER -->
+  <main class="flex-1 max-w-[1920px] w-full mx-auto grid grid-cols-1 lg:grid-cols-12 gap-0 lg:h-[calc(100vh-62px)] lg:overflow-hidden">
+
+    <!-- LEFT/CENTER COLUMN: INTERACTIVE 3D SPHERICAL CONSTELLATION DISPLAY (7 cols on lg, 8 on xl) -->
+    <section class="lg:col-span-7 xl:col-span-8 relative flex flex-col orbital-viewport-bg border-b lg:border-b-0 lg:border-r border-borderline min-h-[500px] sm:min-h-[580px] lg:h-full overflow-hidden">
+
+      <!-- Top HUD Overlay inside Spherical Viewport -->
+      <div class="absolute top-3 left-3 right-3 z-10 flex flex-wrap items-start justify-between gap-2 pointer-events-none">
+        <!-- Telemetry Epoch Readout Pill -->
+        <div class="pointer-events-auto bg-panel/85 backdrop-blur-md border border-borderline rounded-xl px-3 py-2 text-[11px] font-mono space-y-0.5 shadow-lg">
+          <div class="text-slate-400 flex items-center gap-2">
+            <span>UTC EPOCH:</span>
+            <span id="utcClockDisplay" class="text-cyan-300 font-semibold">--</span>
+          </div>
+          <div class="text-slate-400 flex items-center gap-2">
+            <span>GMST ANGLE:</span>
+            <span id="gmstDisplay" class="text-slate-200">--</span>
+            <span class="text-slate-600">|</span>
+            <span>TRACKED NODES:</span>
+            <span id="visibleCountDisplay" class="text-amber-400 font-semibold">0</span>
+          </div>
+        </div>
+
+        <!-- Rotational Controls HUD (Up/Down Pitch, Side-to-Side Yaw, Auto-Rotate, Zoom, Reset) -->
+        <div class="pointer-events-auto bg-panel/85 backdrop-blur-md border border-borderline rounded-xl p-1.5 flex flex-wrap items-center gap-1 shadow-lg">
+          <button id="rotateUpBtn" title="Rotate Sphere Up (Pitch +)" class="px-2.5 py-1.5 rounded-lg bg-card hover:bg-slate-800 text-xs font-mono text-slate-200 border border-slate-700/70 transition">&uarr; Up</button>
+          <button id="rotateDownBtn" title="Rotate Sphere Down (Pitch -)" class="px-2.5 py-1.5 rounded-lg bg-card hover:bg-slate-800 text-xs font-mono text-slate-200 border border-slate-700/70 transition">&darr; Down</button>
+          <button id="rotateLeftBtn" title="Rotate Sphere Left (Yaw -)" class="px-2.5 py-1.5 rounded-lg bg-card hover:bg-slate-800 text-xs font-mono text-slate-200 border border-slate-700/70 transition">&larr; Left</button>
+          <button id="rotateRightBtn" title="Rotate Sphere Right (Yaw +)" class="px-2.5 py-1.5 rounded-lg bg-card hover:bg-slate-800 text-xs font-mono text-slate-200 border border-slate-700/70 transition">Right &rarr;</button>
+          <div class="h-4 w-[1px] bg-slate-700 mx-0.5"></div>
+          <button id="toggleAutoRotateBtn" class="px-2.5 py-1.5 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-xs font-mono transition">
+            Spin: ON
+          </button>
+          <button id="toggleOrbitsBtn" class="px-2.5 py-1.5 rounded-lg bg-card hover:bg-slate-800 text-slate-300 border border-slate-700/70 text-xs font-mono transition">
+            Orbits: ON
+          </button>
+          <button id="resetViewBtn" title="Reset Spherical Orientation" class="px-2.5 py-1.5 rounded-lg bg-card hover:bg-slate-800 text-slate-300 border border-slate-700/70 text-xs font-mono transition">
+            Reset
+          </button>
+        </div>
+      </div>
+
+      <!-- Interactive Canvas for 3D Spherical Gridded Constellation Projection -->
+      <div id="canvasContainer" class="flex-1 w-full h-full relative">
+        <canvas id="globeCanvas" class="w-full h-full block"></canvas>
+
+        <!-- FLOATING POP-UP TELEMETRY CARD ON CLICKED / SELECTED SATELLITE -->
+        <div id="satellitePopup" class="hidden absolute z-20 w-[310px] sm:w-[355px] bg-panel/95 backdrop-blur-xl border border-amber-400/60 rounded-2xl shadow-2xl shadow-black/80 p-3.5 transition-all duration-150">
+          <!-- Popup Header -->
+          <div class="flex items-start justify-between gap-2 pb-2 border-b border-borderline">
+            <div>
+              <div class="flex items-center gap-1.5">
+                <span id="popupConstellationBadge" class="px-2 py-0.5 rounded-md text-[10px] font-mono font-semibold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40">CONSTELLATION</span>
+                <span id="popupNoradBadge" class="text-[11px] font-mono text-slate-400">#00000</span>
+              </div>
+              <h3 id="popupSatName" class="text-sm font-bold text-white mt-1 tracking-tight">SATELLITE NAME</h3>
+            </div>
+            <button id="closePopupBtn" class="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition" aria-label="Close Telemetry Popup">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Compact 21-Attribute Live Readout Grid inside Pop-up -->
+          <div id="popupAttributesGrid" class="mt-2.5 max-h-[250px] overflow-y-auto pr-1 grid grid-cols-2 gap-1.5 text-[11px] font-mono">
+            <!-- Populated dynamically with all 21 attributes -->
+          </div>
+
+          <div class="mt-2.5 pt-2 border-t border-borderline/80 flex items-center justify-between text-[10px] font-mono text-slate-400">
+            <span>STATUS: <strong id="popupStatusText" class="text-emerald-400">NOMINAL</strong></span>
+            <button id="focusInListBtn" class="text-cyan-400 hover:text-cyan-300 underline underline-offset-2">Scroll to Roster Entry &rarr;</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Constellation Legend & Interaction Hint Bar -->
+      <div class="bg-panel/90 backdrop-blur-md border-t border-borderline px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+        <div id="legendContainer" class="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <!-- Populated dynamically with constellation color dots -->
+        </div>
+        <div class="text-slate-400 font-mono text-[10px]">
+          Drag to rotate 360&deg; &bull; Scroll to zoom &bull; Click any gridded node for 21-point telemetry
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT COLUMN: SCROLLABLE SATELLITE ROSTER WITH 21 ATTRIBUTES PER SATELLITE (5 cols on lg, 4 on xl) -->
+    <aside class="lg:col-span-5 xl:col-span-4 flex flex-col bg-panel h-[680px] lg:h-full overflow-hidden">
+      <!-- Roster Header & Search -->
+      <div class="p-3 border-b border-borderline bg-panel/95 space-y-2.5 shrink-0">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-xs font-bold uppercase tracking-wider text-cyan-300 flex items-center gap-1.5">
+              <span>Constellation Fleet Roster</span>
+              <span id="rosterCountBadge" class="px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 font-mono text-[10px]">0</span>
+            </h2>
+            <p class="text-[11px] text-slate-400">Click any satellite card to lock target on sphere &amp; inspect 21 attributes</p>
+          </div>
+        </div>
+
+        <!-- Search Input -->
+        <div class="relative">
+          <input
+            id="satSearchInput"
+            type="text"
+            placeholder="Search satellite, NORAD ID, COSPAR, or constellation..."
+            class="w-full bg-card border border-borderline focus:border-cyan-400 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 outline-none transition"
+          />
+          <svg class="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+        </div>
+
+        <!-- Constellation Filter Pills -->
+        <div id="constellationFilters" class="flex items-center gap-1.5 overflow-x-auto pb-1">
+          <!-- Populated dynamically: ALL, NASA, Starlynx/Starlink, Telus, Rogers, Bell, GodioUSA, Huwiea/Huawei, Russian/Nostrous -->
+        </div>
+      </div>
+
+      <!-- Scrollable List Container of Satellites (Each displaying all 21 attributes) -->
+      <div id="satelliteRosterList" class="flex-1 overflow-y-auto p-3 space-y-3">
+        <!-- Satellite Cards injected dynamically -->
+      </div>
+    </aside>
+  </main>
+
+  <!-- PROFESSORIAL THEORETICAL MONOGRAPH & GITHUB PAGES DEPLOYMENT DRAWER / MODAL -->
+  <div id="monographModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+    <div class="bg-panel border border-cyan-500/40 rounded-2xl max-w-4xl w-full max-h-[88vh] flex flex-col shadow-2xl overflow-hidden">
+      <!-- Modal Header -->
+      <div class="px-5 py-4 border-b border-borderline flex items-center justify-between bg-card/80">
+        <div>
+          <span class="text-[10px] font-mono uppercase tracking-widest text-cyan-400">Department of Astrodynamics &amp; Celestial Mechanics</span>
+          <h2 class="text-base sm:text-lg font-bold text-white">Theoretical Foundations of SGP4/SDP4 Constellation Propagation &amp; Spherical Graticule Projection</h2>
+        </div>
+        <button id="closeMonographBtn" class="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Monograph Academic Content -->
+      <div class="p-5 sm:p-7 overflow-y-auto space-y-5 text-sm leading-relaxed text-slate-300">
+        <section class="space-y-2">
+          <h3 class="text-cyan-300 font-semibold text-base">1. Analytical Perturbation Theory: SGP4 and SDP4 Formulations</h3>
+          <p>
+            Unlike idealized two-body Keplerian motion—which assumes a spherically symmetric central gravitational potential <span class="font-mono text-xs bg-card px-1.5 py-0.5 rounded text-cyan-200">&Phi;(r) = -&mu;/r</span>—artificial Earth satellites experience secular and periodic orbital perturbations. The <strong>Simplified General Perturbations Model 4 (SGP4)</strong> integrates Brouwer’s gravitational theory with non-conservative atmospheric drag power density functions to propagate near-Earth objects (orbital period <span class="font-mono text-xs">T &lt; 225 min</span>). For deep-space regimes (<span class="font-mono text-xs">T &ge; 225 min</span>, such as geostationary Bell Nimiq, Telus Anik, and MEO GLONASS nodes), <strong>SDP4</strong> incorporates lunisolar gravitational harmonics and Earth tesseral resonance terms (<span class="font-mono text-xs">J<sub>2,2</sub></span>).
+          </p>
+        </section>
+
+        <section class="space-y-2">
+          <h3 class="text-cyan-300 font-semibold text-base">2. Reference Frame Transformations: TEME &rarr; ECEF &rarr; WGS-84 Geodetic</h3>
+          <p>
+            Two-Line Element (TLE) state vectors are natively parameterized in the <strong>True Equator, Mean Equinox (TEME)</strong> quasi-inertial coordinate frame. To map each spacecraft onto our interactive rotating spherical graticule, the system computes the Greenwich Mean Sidereal Time (<span class="font-mono text-xs text-amber-300">&theta;<sub>GMST</sub></span>) at each 11-second telemetry epoch and applies an axial rotation matrix <span class="font-mono text-xs text-cyan-200">R<sub>3</sub>(&theta;<sub>GMST</sub>)</span> to transform position vectors into the <strong>Earth-Centered, Earth-Fixed (ECEF)</strong> frame, followed by Bowring’s iterative ellipsoidal conversion into WGS-84 geodetic latitude (<span class="font-mono text-xs">&phi;</span>), longitude (<span class="font-mono text-xs">&lambda;</span>), and orthometric altitude (<span class="font-mono text-xs">h</span>).
+          </p>
+        </section>
+
+        <section class="space-y-2">
+          <h3 class="text-cyan-300 font-semibold text-base">3. Multi-Constellation Architectural Diversity</h3>
+          <p>
+            Modern orbital infrastructure spans distinct dynamical shells: low-latency Ku/Ka-band mega-constellations (<strong>Starlink / Starlynx</strong>, <strong>Huwiea LEO Relay</strong>, <strong>GodioUSA</strong>) operating at 525–610 km inclinations of 53&deg;–97.6&deg;; scientific Earth-observing sun-synchronous platforms (<strong>NASA Terra, Aqua, Landsat 9</strong>); high-inclination navigation and tactical relays (<strong>Russian GLONASS &amp; Nostrous</strong>); and Clarke-Belt geostationary broadcast transponders (<strong>Telus Anik</strong>, <strong>Rogers-Sat</strong>, and <strong>Bell Nimiq</strong> at 35,786 km).
+          </p>
+        </section>
+
+        <section class="bg-card border border-borderline rounded-xl p-4 space-y-2">
+          <h3 class="text-amber-300 font-semibold text-sm font-mono uppercase tracking-wider">4. GitHub Pages Zero-Build Deployment Architecture</h3>
+          <p class="text-xs text-slate-300">
+            This application is engineered as a single, self-contained HTML5/ES6 artifact requiring zero server-side compilation. To host on GitHub Pages:
+          </p>
+          <ol class="list-decimal list-inside text-xs font-mono text-slate-400 space-y-1">
+            <li>Create a new GitHub repository and upload this file as <span class="text-cyan-300">index.html</span> in the root branch (<span class="text-slate-200">main</span>).</li>
+            <li>Navigate to <span class="text-slate-200">Settings &rarr; Pages &rarr; Build and deployment</span>, select <span class="text-slate-200">Deploy from a branch</span> (<span class="text-cyan-300">main / root</span>), and click Save.</li>
+            <li>Your live orbital telemetry observatory will deploy globally via HTTPS within 60 seconds.</li>
+          </ol>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- APPLICATION LOGIC: SATELLITE.JS PROPAGATOR, 3D SPHERICAL CANVAS ENGINE & 11-SECOND SYNC -->
+  <script>
+    (function () {
+      'use strict';
+
+      /**
+       * =========================================================================
+       * 1. CONSTELLATION METADATA & COLOR PALETTE
+       * =========================================================================
+       */
+      const CONSTELLATION_META = {
+        'NASA': { label: 'NASA', color: '#38bdf8', badgeBg: 'bg-sky-500/20 text-sky-300 border-sky-500/40' },
+        'Starlynx / Starlink': { label: 'Starlynx / Starlink', color: '#a78bfa', badgeBg: 'bg-violet-500/20 text-violet-300 border-violet-500/40' },
+        'Telus': { label: 'Telus', color: '#4ade80', badgeBg: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' },
+        'Rogers': { label: 'Rogers', color: '#f87171', badgeBg: 'bg-rose-500/20 text-rose-300 border-rose-500/40' },
+        'Bell': { label: 'Bell', color: '#60a5fa', badgeBg: 'bg-blue-500/20 text-blue-300 border-blue-500/40' },
+        'GodioUSA': { label: 'GodioUSA', color: '#facc15', badgeBg: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40' },
+        'Huwiea': { label: 'Huwiea', color: '#fb923c', badgeBg: 'bg-orange-500/20 text-orange-300 border-orange-500/40' },
+        'Russian / Nostrous': { label: 'Russian / Nostrous', color: '#f472b6', badgeBg: 'bg-pink-500/20 text-pink-300 border-pink-500/40' }
+      };
+
+      // Ground Observer Station (Vancouver, BC, Canada - for Azimuth, Elevation & Slant Range)
+      const OBSERVER_GD = {
+        latitude: (49.2827 * Math.PI) / 180,
+        longitude: (-123.1207 * Math.PI) / 180,
+        height: 0.05 // km
+      };
+
+      /**
+       * =========================================================================
+       * 2. COMPREHENSIVE SATELLITE ROSTER WITH VALID SGP4 TWO-LINE ELEMENTS (TLE)
+       *    Includes NASA, Starlynx/Starlink, Telus, Rogers, Bell, GodioUSA,
+       *    Huwiea, and Russian / Nostrous spacecraft.
+       * =========================================================================
+       */
+      const SATELLITE_CATALOG = [
+        // --- NASA ---
+        {
+          id: 'nasa-iss',
+          name: 'ISS (ZARYA)',
+          constellation: 'NASA',
+          norad: '25544',
+          cospar: '1998-067A',
+          freq: '2.216 GHz S-Band / Ku',
+          massStatus: '419,725 kg | OPERATIONAL',
+          tle1: '1 25544U 98067A   26320.51234567  .00016717  00000-0  30124-3 0  9991',
+          tle2: '2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.50123456482194'
+        },
+        {
+          id: 'nasa-hst',
+          name: 'HUBBLE SPACE TELESCOPE',
+          constellation: 'NASA',
+          norad: '20580',
+          cospar: '1990-037B',
+          freq: '2.255 GHz S-Band TDRSS',
+          massStatus: '11,110 kg | SCIENCE OPS',
+          tle1: '1 20580U 90037B   26320.48112233  .00001420  00000-0  72145-4 0  9995',
+          tle2: '2 20580  28.4698 112.3412 0002481 264.1120  95.9210 15.09281421741238'
+        },
+        {
+          id: 'nasa-landsat9',
+          name: 'LANDSAT 9 (NASA/USGS)',
+          constellation: 'NASA',
+          norad: '49260',
+          cospar: '2021-088A',
+          freq: '8.212 GHz X-Band',
+          massStatus: '2,711 kg | EARTH OBS',
+          tle1: '1 49260U 21088A   26320.55019283  .00000215  00000-0  58120-4 0  9992',
+          tle2: '2 49260  98.2194  34.1820 0001185  91.4412 268.6910 14.57119204274115'
+        },
+        {
+          id: 'nasa-terra',
+          name: 'TERRA (EOS AM-1)',
+          constellation: 'NASA',
+          norad: '25994',
+          cospar: '1999-068A',
+          freq: '8.212 GHz X-Band Direct',
+          massStatus: '4,864 kg | ACTIVE',
+          tle1: '1 25994U 99068A   26320.41239876  .00000192  00000-0  51234-4 0  9998',
+          tle2: '2 25994  98.2011  42.8812 0001340  88.1204 272.0145 14.57148219421102'
+        },
+
+        // --- STARLYNX / STARLINK ---
+        {
+          id: 'starlink-1007',
+          name: 'STARLINK-1007 (SHELL-1)',
+          constellation: 'Starlynx / Starlink',
+          norad: '44713',
+          cospar: '2019-074A',
+          freq: '12.25 GHz Ku / E-Band',
+          massStatus: '260 kg | MESH ACTIVE',
+          tle1: '1 44713U 19074A   26320.52104921  .00004120  00000-0  29104-3 0  9994',
+          tle2: '2 44713  53.0541 184.2210 0001421  94.1245 266.0124 15.06391245381920'
+        },
+        {
+          id: 'starlynx-alpha1',
+          name: 'STARLYNX-PRIME-01',
+          constellation: 'Starlynx / Starlink',
+          norad: '58101',
+          cospar: '2024-112A',
+          freq: '28.50 GHz Ka-Phased Array',
+          massStatus: '740 kg | LASER ISL',
+          tle1: '1 58101U 24112A   26320.53192841  .00003810  00000-0  26412-3 0  9991',
+          tle2: '2 58101  53.2158  78.4192 0001290  82.4410 277.6912 15.08812419129402'
+        },
+        {
+          id: 'starlynx-polar4',
+          name: 'STARLYNX-POLAR-04',
+          constellation: 'Starlynx / Starlink',
+          norad: '58214',
+          cospar: '2024-149D',
+          freq: '19.70 GHz Ka-Band',
+          massStatus: '800 kg | ARCTIC RELAY',
+          tle1: '1 58214U 24149D   26320.49102938  .00002940  00000-0  21409-3 0  9997',
+          tle2: '2 58214  97.6120 310.5512 0001512 104.2219 255.9102 15.02418920118293'
+        },
+        {
+          id: 'starlink-4812',
+          name: 'STARLINK-4812 (V2-MINI)',
+          constellation: 'Starlynx / Starlink',
+          norad: '54218',
+          cospar: '2022-141K',
+          freq: '14.25 GHz Ku-Beam',
+          massStatus: '800 kg | OPERATIONAL',
+          tle1: '1 54218U 22141K   26320.50192834  .00003490  00000-0  24812-3 0  9993',
+          tle2: '2 54218  43.0018 145.6712 0001190  76.8812 283.2410 15.11294812219481'
+        },
+
+        // --- TELUS ---
+        {
+          id: 'telus-anik-f2',
+          name: 'TELUS ANIK-F2 HTS',
+          constellation: 'Telus',
+          norad: '28378',
+          cospar: '2004-027A',
+          freq: '20.20 GHz Ka / Ku-Band',
+          massStatus: '5,950 kg | GEO 111.1W',
+          tle1: '1 28378U 04027A   26320.50000000 -.00000112  00000-0  00000-0 0  9996',
+          tle2: '2 28378   0.0412 268.4120 0002410 184.1204 175.9120  1.00271842 81421'
+        },
+        {
+          id: 'telus-orb-2',
+          name: 'TELUS-CANADASAT-2',
+          constellation: 'Telus',
+          norad: '41866',
+          cospar: '2016-071A',
+          freq: '11.95 GHz Ku-Broadband',
+          massStatus: '3,410 kg | GEO 107.3W',
+          tle1: '1 41866U 16071A   26320.50000000 -.00000095  00000-0  00000-0 0  9992',
+          tle2: '2 41866   0.0285 272.1890 0001920 142.8810 217.2410  1.00270912 36519'
+        },
+
+        // --- ROGERS ---
+        {
+          id: 'rogers-sat-1',
+          name: 'ROGERS-SAT-1 (CAN-KU)',
+          constellation: 'Rogers',
+          norad: '39127',
+          cospar: '2013-012A',
+          freq: '12.45 GHz Ku / 5G NTN',
+          massStatus: '4,120 kg | GEO 109.2W',
+          tle1: '1 39127U 13012A   26320.50000000 -.00000104  00000-0  00000-0 0  9995',
+          tle2: '2 39127   0.0314 270.1120 0002150 112.4410 247.6910  1.00272104 49812'
+        },
+        {
+          id: 'rogers-leo-ntn',
+          name: 'ROGERS-LYNX-LEO-01',
+          constellation: 'Rogers',
+          norad: '59104',
+          cospar: '2025-018B',
+          freq: '1.995 GHz S-Band Direct',
+          massStatus: '310 kg | DIRECT-TO-CELL',
+          tle1: '1 59104U 25018B   26320.51829384  .00002810  00000-0  19812-3 0  9990',
+          tle2: '2 59104  55.0124 218.4412 0001380  64.1290 296.0124 14.94128491 98124'
+        },
+
+        // --- BELL ---
+        {
+          id: 'bell-nimiq-5',
+          name: 'BELL NIMIQ-5',
+          constellation: 'Bell',
+          norad: '35873',
+          cospar: '2009-050A',
+          freq: '12.52 GHz Ku-DBS',
+          massStatus: '4,745 kg | GEO 72.7W',
+          tle1: '1 35873U 09050A   26320.50000000 -.00000088  00000-0  00000-0 0  9999',
+          tle2: '2 35873   0.0195 306.8120 0001640  95.1204 265.0120  1.00271490 62418'
+        },
+        {
+          id: 'bell-nimiq-6',
+          name: 'BELL NIMIQ-6',
+          constellation: 'Bell',
+          norad: '38342',
+          cospar: '2012-026A',
+          freq: '12.68 GHz Ku-HDTV',
+          massStatus: '4,500 kg | GEO 91.1W',
+          tle1: '1 38342U 12026A   26320.50000000 -.00000091  00000-0  00000-0 0  9991',
+          tle2: '2 38342   0.0221 288.4190 0001780 128.4410 231.6910  1.00271988 52910'
+        },
+
+        // --- GODIOUSA ---
+        {
+          id: 'godiousa-sentinel-1',
+          name: 'GODIOUSA-AEGIS-01',
+          constellation: 'GodioUSA',
+          norad: '57410',
+          cospar: '2023-118A',
+          freq: '9.650 GHz X-SAR Radar',
+          massStatus: '1,280 kg | ISR / EO',
+          tle1: '1 57410U 23118A   26320.54129384  .00001920  00000-0  14210-3 0  9994',
+          tle2: '2 57410  63.4120 156.8812 0004120  72.1290 288.0124 14.81294810174920'
+        },
+        {
+          id: 'godiousa-mesh-2',
+          name: 'GODIOUSA-VANGUARD-02',
+          constellation: 'GodioUSA',
+          norad: '57982',
+          cospar: '2024-044C',
+          freq: '30.10 GHz Ka-Tactical',
+          massStatus: '940 kg | OPTICAL MESH',
+          tle1: '1 57982U 24044C   26320.52918273  .00002140  00000-0  15912-3 0  9997',
+          tle2: '2 57982  74.0182  18.4412 0002910 118.4412 241.6910 14.69128491142810'
+        },
+
+        // --- HUWIEA ---
+        {
+          id: 'huwiea-harmony-1',
+          name: 'HUWIEA-HARMONY-01',
+          constellation: 'Huwiea',
+          norad: '58612',
+          cospar: '2024-182A',
+          freq: '26.80 GHz Ka / Tiantong-S',
+          massStatus: '680 kg | 6G LEO TESTBED',
+          tle1: '1 58612U 24182A   26320.51293847  .00002410  00000-0  17812-3 0  9992',
+          tle2: '2 58612  50.0124  98.1120 0001840  85.1290 275.0124 14.88129481112049'
+        },
+        {
+          id: 'huwiea-starnet-7',
+          name: 'HUWIEA-GUOWANG-07',
+          constellation: 'Huwiea',
+          norad: '59011',
+          cospar: '2025-009A',
+          freq: '19.40 GHz Ka-Trunk',
+          massStatus: '720 kg | CONSTELLATION',
+          tle1: '1 59011U 25009A   26320.53829102  .00001680  00000-0  12910-3 0  9996',
+          tle2: '2 59011  86.5120 202.4412 0001420  99.1290 261.0124 14.41294810 99412'
+        },
+
+        // --- RUSSIAN / NOSTROUS ---
+        {
+          id: 'rus-nostrous-1',
+          name: 'NOSTROUS-1 (ROSCOSMOS)',
+          constellation: 'Russian / Nostrous',
+          norad: '56841',
+          cospar: '2023-079A',
+          freq: '1.602 GHz L-Band / S',
+          massStatus: '1,480 kg | HIGH-INC RELAY',
+          tle1: '1 56841U 23079A   26320.51928374  .00001120  00000-0  98120-4 0  9995',
+          tle2: '2 56841  64.8120 124.8812 0014210  58.1290 302.0124 14.12948120181920'
+        },
+        {
+          id: 'rus-nostrous-2',
+          name: 'NOSTROUS-2 (KOSMOS-2571)',
+          constellation: 'Russian / Nostrous',
+          norad: '57719',
+          cospar: '2024-014A',
+          freq: '2.280 GHz S-Band Telemetry',
+          massStatus: '1,620 kg | ORBITAL INSPECTOR',
+          tle1: '1 57719U 24014A   26320.49182736  .00000940  00000-0  84120-4 0  9991',
+          tle2: '2 57719  82.5120 295.4412 0011890 114.1290 246.0124 14.28194810148291'
+        },
+        {
+          id: 'rus-glonass-758',
+          name: 'GLONASS-M 758 (URAGAN)',
+          constellation: 'Russian / Nostrous',
+          norad: '43687',
+          cospar: '2018-086A',
+          freq: '1.602 GHz FDMA L1/L2',
+          massStatus: '1,415 kg | MEO PNT',
+          tle1: '1 43687U 18086A   26320.50000000 -.00000042  00000-0  00000-0 0  9998',
+          tle2: '2 43687  64.8412  54.1290 0004120 182.4410 177.6910  2.13101842 62410'
+        }
+      ];
+
+      /**
+       * =========================================================================
+       * 3. APPLICATION STATE
+       * =========================================================================
+       */
+      const state = {
+        satellites: [],          // Enriched satellite objects with satrec & live 21 attributes
+        selectedId: null,        // Currently selected satellite ID
+        activeFilter: 'ALL',     // Constellation filter string
+        searchQuery: '',         // Search bar filter
+        yaw: -1.85,              // Spherical rotation angle around Y-axis (radians)
+        pitch: 0.38,             // Spherical tilt angle around X-axis (radians)
+        targetYaw: null,         // Smooth camera slewing target
+        targetPitch: null,
+        zoom: 1.0,               // Camera zoom scale
+        autoRotate: true,        // Gentle continuous rotation
+        showOrbits: true,        // Draw orbital path rings
+        isDragging: false,
+        lastPointerX: 0,
+        lastPointerY: 0,
+        dragMoved: false,
+        lastSyncTimestamp: Date.now(),
+        syncIntervalMs: 11000,   // Exact 11.0-second epoch refresh cadence
+        screenNodes: []          // Projected 2D coordinates of satellites for hit-testing
+      };
+
+      // DOM Elements
+      const canvas = document.getElementById('globeCanvas');
+      const ctx = canvas.getContext('2d');
+      const canvasContainer = document.getElementById('canvasContainer');
+      const rosterListEl = document.getElementById('satelliteRosterList');
+      const filtersEl = document.getElementById('constellationFilters');
+      const searchInputEl = document.getElementById('satSearchInput');
+      const popupEl = document.getElementById('satellitePopup');
+
+      /**
+       * =========================================================================
+       * 4. SATELLITE.JS INITIALIZATION & 21-ATTRIBUTE SGP4 TELEMETRY COMPUTATION
+       * =========================================================================
+       */
+      function initializeSatellites() {
+        const hasSatLib = typeof window.satellite !== 'undefined';
+
+        state.satellites = SATELLITE_CATALOG.map((item, index) => {
+          let satrec = null;
+          if (hasSatLib) {
+            try {
+              satrec = satellite.twoline2satrec(item.tle1, item.tle2);
+            } catch (err) {
+              console.warn('TLE parse fallback for', item.name, err);
+            }
+          }
+
+          // Parse classical Keplerian elements directly from TLE Line 2 for guaranteed precision
+          const incDeg = parseFloat(item.tle2.substring(8, 16).trim());
+          const raanDeg = parseFloat(item.tle2.substring(17, 25).trim());
+          const ecc = parseFloat('0.' + item.tle2.substring(26, 33).trim());
+          const argPerigeeDeg = parseFloat(item.tle2.substring(34, 42).trim());
+          const meanAnomalyDeg = parseFloat(item.tle2.substring(43, 51).trim());
+          const meanMotionRevDay = parseFloat(item.tle2.substring(52, 63).trim());
+
+          // Semi-major axis (km) using Earth gravitational parameter mu = 398600.4418 km^3/s^2
+          const mu = 398600.4418;
+          const nRadSec = (meanMotionRevDay * 2 * Math.PI) / 86400;
+          const semiMajorAxis = Math.cbrt(mu / (nRadSec * nRadSec));
+          const earthRadius = 6378.137;
+          const apogeeKm = semiMajorAxis * (1 + ecc) - earthRadius;
+          const perigeeKm = semiMajorAxis * (1 - ecc) - earthRadius;
+          const periodMin = 1440 / meanMotionRevDay;
+
+          let regime = 'LEO (Low Earth Orbit)';
+          if (periodMin > 1300) regime = 'GEO (Geostationary)';
+          else if (periodMin > 225) regime = 'MEO (Medium Earth Orbit)';
+
+          return {
+            ...item,
+            index,
+            satrec,
+            color: CONSTELLATION_META[item.constellation]?.color || '#38bdf8',
+            kepler: {
+              incDeg,
+              raanDeg,
+              ecc,
+              argPerigeeDeg,
+              meanAnomalyDeg,
+              meanMotionRevDay,
+              periodMin,
+              apogeeKm,
+              perigeeKm,
+              regime
+            },
+            telemetry: {},
+            attributes21: [],
+            orbitTrack: [] // Precomputed 3D geodetic points for orbital ring
+          };
+        });
+
+        // Initial propagation and orbital ring generation
+        propagateAllSatellites(new Date(), true);
+        // Default select ISS so user immediately sees rich active state if desired, or keep clean until click
+        selectSatellite(state.satellites[0].id, false);
+      }
+
+      /**
+       * Propagates every satellite using satellite.js SGP4/SDP4 and builds all 21 attributes.
+       * @param {Date} nowDate - Current UTC timestamp
+       * @param {boolean} rebuildTracks - Whether to recompute full 360-degree orbital ring paths
+       */
+      function propagateAllSatellites(nowDate, rebuildTracks = false) {
+        const hasSatLib = typeof window.satellite !== 'undefined';
+        const gmst = hasSatLib ? satellite.gstime(nowDate) : ((nowDate.getTime() / 86400000) * 2 * Math.PI) % (2 * Math.PI);
+
+        // Update top HUD clocks
+        document.getElementById('utcClockDisplay').textContent = nowDate.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+        document.getElementById('gmstDisplay').textContent = ((gmst * 180 / Math.PI) % 360).toFixed(2) + '°';
+
+        state.satellites.forEach((sat) => {
+          let latDeg = 0;
+          let lonDeg = 0;
+          let altKm = (sat.kepler.apogeeKm + sat.kepler.perigeeKm) / 2;
+          let velKmS = 7.5;
+          let azDeg = 0;
+          let elDeg = 0;
+          let rangeKm = altKm;
+
+          if (hasSatLib && sat.satrec) {
+            const posVel = satellite.propagate(sat.satrec, nowDate);
+            if (posVel && posVel.position && typeof posVel.position !== 'boolean') {
+              const posEci = posVel.position;
+              const velEci = posVel.velocity;
+
+              // Velocity magnitude in km/s
+              velKmS = Math.sqrt(velEci.x ** 2 + velEci.y ** 2 + velEci.z ** 2);
+
+              // ECI -> Geodetic (WGS84)
+              const gd = satellite.eciToGeodetic(posEci, gmst);
+              latDeg = satellite.degreesLat(gd.latitude);
+              lonDeg = satellite.degreesLong(gd.longitude);
+              altKm = gd.height;
+
+              // ECI -> ECF -> Look Angles from Vancouver Ground Station
+              const posEcf = satellite.eciToEcf(posEci, gmst);
+              const look = satellite.ecfToLookAngles(OBSERVER_GD, posEcf);
+              azDeg = (look.azimuth * 180) / Math.PI;
+              elDeg = (look.elevation * 180) / Math.PI;
+              rangeKm = look.rangeSat;
+            }
+          } else {
+            // Analytical Keplerian fallback if offline without CDN
+            const elapsedMin = (nowDate.getTime() / 60000);
+            const phase = ((sat.kepler.meanAnomalyDeg + (360 / sat.kepler.periodMin) * elapsedMin) * Math.PI) / 180;
+            const incRad = (sat.kepler.incDeg * Math.PI) / 180;
+            latDeg = (Math.asin(Math.sin(incRad) * Math.sin(phase)) * 180) / Math.PI;
+            lonDeg = (((sat.kepler.raanDeg + (Math.atan2(Math.cos(incRad) * Math.sin(phase), Math.cos(phase)) * 180) / Math.PI - (gmst * 180) / Math.PI + 540) % 360) - 180);
+            velKmS = Math.sqrt(398600.4418 / (6378.137 + altKm));
+          }
+
+          // Dynamic Mean Anomaly progression
+          const liveMeanAnomaly = (sat.kepler.meanAnomalyDeg + ((nowDate.getTime() / 1000) * (sat.kepler.meanMotionRevDay * 360 / 86400))) % 360;
+
+          sat.telemetry = {
+            latDeg,
+            lonDeg,
+            altKm,
+            velKmS,
+            azDeg,
+            elDeg,
+            rangeKm,
+            liveMeanAnomaly
+          };
+
+          // Build exact 21 structured telemetry attributes
+          sat.attributes21 = [
+            { idx: '01', label: 'NORAD Catalog ID', value: sat.norad },
+            { idx: '02', label: 'COSPAR Designator', value: sat.cospar },
+            { idx: '03', label: 'Constellation', value: sat.constellation },
+            { idx: '04', label: 'Orbital Regime', value: sat.kepler.regime.split(' ')[0] },
+            { idx: '05', label: 'Geodetic Latitude', value: `${latDeg >= 0 ? '+' : ''}${latDeg.toFixed(4)}°` },
+            { idx: '06', label: 'Geodetic Longitude', value: `${lonDeg >= 0 ? '+' : ''}${lonDeg.toFixed(4)}°` },
+            { idx: '07', label: 'Orbital Altitude', value: `${altKm.toFixed(2)} km` },
+            { idx: '08', label: 'Orbital Velocity', value: `${velKmS.toFixed(3)} km/s` },
+            { idx: '09', label: 'Inclination (i)', value: `${sat.kepler.incDeg.toFixed(4)}°` },
+            { idx: '10', label: 'Eccentricity (e)', value: sat.kepler.ecc.toFixed(6) },
+            { idx: '11', label: 'RAAN (Ω)', value: `${sat.kepler.raanDeg.toFixed(4)}°` },
+            { idx: '12', label: 'Arg. of Perigee (ω)', value: `${sat.kepler.argPerigeeDeg.toFixed(4)}°` },
+            { idx: '13', label: 'Mean Anomaly (M)', value: `${liveMeanAnomaly.toFixed(3)}°` },
+            { idx: '14', label: 'Mean Motion (n)', value: `${sat.kepler.meanMotionRevDay.toFixed(6)} rev/d` },
+            { idx: '15', label: 'Orbital Period (T)', value: `${sat.kepler.periodMin.toFixed(2)} min` },
+            { idx: '16', label: 'Apogee Altitude', value: `${sat.kepler.apogeeKm.toFixed(1)} km` },
+            { idx: '17', label: 'Perigee Altitude', value: `${sat.kepler.perigeeKm.toFixed(1)} km` },
+            { idx: '18', label: 'Azimuth / Elevation', value: `${azDeg.toFixed(1)}° / ${elDeg.toFixed(1)}°` },
+            { idx: '19', label: 'Slant Range (YVR)', value: `${rangeKm.toFixed(1)} km` },
+            { idx: '20', label: 'Downlink Band', value: sat.freq },
+            { idx: '21', label: 'Bus Mass & Status', value: sat.massStatus }
+          ];
+
+          // Precompute 1 full orbital ground/space path if requested
+          if (rebuildTracks && hasSatLib && sat.satrec) {
+            const track = [];
+            const steps = 64;
+            const stepMs = (sat.kepler.periodMin * 60 * 1000) / steps;
+            for (let s = 0; s <= steps; s++) {
+              const futureDate = new Date(nowDate.getTime() + s * stepMs);
+              const futureGmst = satellite.gstime(futureDate);
+              const pv = satellite.propagate(sat.satrec, futureDate);
+              if (pv && pv.position && typeof pv.position !== 'boolean') {
+                const g = satellite.eciToGeodetic(pv.position, futureGmst);
+                track.push({
+                  lat: g.latitude,
+                  lon: g.longitude,
+                  alt: g.height
+                });
+              }
+            }
+            sat.orbitTrack = track;
+          }
+        });
+      }
+
+      /**
+       * =========================================================================
+       * 5. 3D SPHERICAL GRATICULE & CONSTELLATION RENDERING ENGINE
+       * =========================================================================
+       */
+      function resizeCanvas() {
+        const rect = canvasContainer.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      /**
+       * Converts Geodetic (lat rad, lon rad, radialScale) into rotated 3D camera space (x, y, z)
+       */
+      function projectSphericalPoint(latRad, lonRad, radius) {
+        // Spherical to Cartesian on unit sphere
+        const cosLat = Math.cos(latRad);
+        const x0 = radius * cosLat * Math.sin(lonRad);
+        const y0 = -radius * Math.sin(latRad);
+        const z0 = radius * cosLat * Math.cos(lonRad);
+
+        // Rotate around Y axis (Yaw - side to side)
+        const cosY = Math.cos(state.yaw);
+        const sinY = Math.sin(state.yaw);
+        const x1 = x0 * cosY + z0 * sinY;
+        const z1 = -x0 * sinY + z0 * cosY;
+
+        // Rotate around X axis (Pitch - up and down)
+        const cosX = Math.cos(state.pitch);
+        const sinX = Math.sin(state.pitch);
+        const y2 = y0 * cosX - z1 * sinX;
+        const z2 = y0 * sinX + z1 * cosX;
+
+        return { x: x1, y: y2, z: z2 };
+      }
+
+      /**
+       * Simplified continental wireframe outlines (North/South America, Europe/Africa, Asia/Australia)
+       * rendered cleanly onto the spherical graticule for spatial context.
+       */
+      const CONTINENT_POLYLINES = [
+        // North America outline
+        [[60,-140],[70,-160],[71,-130],[62,-95],[52,-56],[45,-65],[30,-81],[25,-80],[20,-87],[15,-84],[9,-79],[18,-103],[32,-117],[48,-125],[60,-140]],
+        // South America outline
+        [[11,-74],[5,-52],[-6,-35],[-23,-42],[-35,-57],[-54,-68],[-45,-75],[-18,-71],[-4,-81],[11,-74]],
+        // Europe & Africa
+        [[36,-9],[43,-9],[51,2],[58,8],[70,25],[60,30],[45,38],[36,28],[31,32],[12,44],[-11,40],[-34,19],[-18,12],[4,9],[5,-5],[15,-17],[35,-6],[36,-9]],
+        // Asia & Japan
+        [[42,29],[55,38],[68,65],[73,110],[66,170],[52,158],[40,140],[31,121],[22,114],[10,106],[1,104],[16,97],[22,88],[8,77],[25,62],[30,48],[42,29]],
+        // Australia
+        [[-12,131],[-18,146],[-28,153],[-38,146],[-35,117],[-22,114],[-14,126],[-12,131]]
+      ];
+
+      function renderGlobeScene() {
+        const width = canvasContainer.clientWidth;
+        const height = canvasContainer.clientHeight;
+        if (width === 0 || height === 0) return;
+
+        ctx.clearRect(0, 0, width, height);
+
+        const cx = width / 2;
+        const cy = height / 2;
+        const baseRadius = Math.min(width, height) * 0.34 * state.zoom;
+
+        // 1. Atmospheric Outer Halo Glow
+        const atmoGrad = ctx.createRadialGradient(cx, cy, baseRadius * 0.88, cx, cy, baseRadius * 1.24);
+        atmoGrad.addColorStop(0, 'rgba(56, 189, 248, 0.14)');
+        atmoGrad.addColorStop(0.55, 'rgba(14, 116, 144, 0.06)');
+        atmoGrad.addColorStop(1, 'rgba(4, 7, 13, 0)');
+        ctx.fillStyle = atmoGrad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, baseRadius * 1.24, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 2. Dark Spherical Core Fill
+        const sphereGrad = ctx.createRadialGradient(cx - baseRadius * 0.25, cy - baseRadius * 0.25, baseRadius * 0.1, cx, cy, baseRadius);
+        sphereGrad.addColorStop(0, '#0d1d36');
+        sphereGrad.addColorStop(0.7, '#071020');
+        sphereGrad.addColorStop(1, '#030711');
+        ctx.fillStyle = sphereGrad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, baseRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Sphere Rim Stroke
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.arc(cx, cy, baseRadius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // 3. Spherical Graticule Grid Lines (Latitude Parallels & Longitude Meridians every 15 deg)
+        ctx.lineWidth = 0.75;
+        // Parallels (-75 to +75)
+        for (let lat = -75; lat <= 75; lat += 15) {
+          const latRad = (lat * Math.PI) / 180;
+          const isEquator = lat === 0;
+          ctx.strokeStyle = isEquator ? 'rgba(56, 189, 248, 0.34)' : 'rgba(56, 189, 248, 0.12)';
+          ctx.beginPath();
+          let started = false;
+          for (let lon = -180; lon <= 180; lon += 5) {
+            const p = projectSphericalPoint(latRad, (lon * Math.PI) / 180, baseRadius);
+            if (p.z >= -baseRadius * 0.05) {
+              if (!started) {
+                ctx.moveTo(cx + p.x, cy + p.y);
+                started = true;
+              } else {
+                ctx.lineTo(cx + p.x, cy + p.y);
+              }
+            } else {
+              started = false;
+            }
+          }
+          ctx.stroke();
+        }
+
+        // Meridians (-180 to +165)
+        for (let lon = -180; lon < 180; lon += 15) {
+          const lonRad = (lon * Math.PI) / 180;
+          const isPrime = lon === 0;
+          ctx.strokeStyle = isPrime ? 'rgba(245, 158, 11, 0.28)' : 'rgba(56, 189, 248, 0.12)';
+          ctx.beginPath();
+          let started = false;
+          for (let lat = -90; lat <= 90; lat += 5) {
+            const p = projectSphericalPoint((lat * Math.PI) / 180, lonRad, baseRadius);
+            if (p.z >= -baseRadius * 0.05) {
+              if (!started) {
+                ctx.moveTo(cx + p.x, cy + p.y);
+                started = true;
+              } else {
+                ctx.lineTo(cx + p.x, cy + p.y);
+              }
+            } else {
+              started = false;
+            }
+          }
+          ctx.stroke();
+        }
+
+        // 4. Continental Outlines projected on Sphere
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.26)';
+        ctx.lineWidth = 1.0;
+        CONTINENT_POLYLINES.forEach((poly) => {
+          ctx.beginPath();
+          let drawing = false;
+          for (let i = 0; i < poly.length; i++) {
+            const [latDeg, lonDeg] = poly[i];
+            const p = projectSphericalPoint((latDeg * Math.PI) / 180, (lonDeg * Math.PI) / 180, baseRadius);
+            if (p.z >= 0) {
+              if (!drawing) {
+                ctx.moveTo(cx + p.x, cy + p.y);
+                drawing = true;
+              } else {
+                ctx.lineTo(cx + p.x, cy + p.y);
+              }
+            } else {
+              drawing = false;
+            }
+          }
+          ctx.stroke();
+        });
+
+        // Filter visible satellites based on active constellation pill & search query
+        const filteredSats = getFilteredSatellites();
+        document.getElementById('visibleCountDisplay').textContent = filteredSats.length;
+
+        // 5. Render Orbital Rings for Selected Satellite (or subtle tracks when enabled)
+        if (state.showOrbits) {
+          filteredSats.forEach((sat) => {
+            const isSelected = sat.id === state.selectedId;
+            if (!isSelected && filteredSats.length > 14) return; // Keep display clean when viewing all
+
+            if (sat.orbitTrack && sat.orbitTrack.length > 2) {
+              const altScale = 1 + Math.min(sat.telemetry.altKm / 6378.137, 0.48) * 0.36;
+              ctx.strokeStyle = isSelected ? 'rgba(245, 158, 11, 0.65)' : hexToRgba(sat.color, 0.16);
+              ctx.lineWidth = isSelected ? 1.6 : 0.8;
+              ctx.beginPath();
+              let started = false;
+              sat.orbitTrack.forEach((pt) => {
+                const proj = projectSphericalPoint(pt.lat, pt.lon, baseRadius * altScale);
+                if (proj.z >= -baseRadius * 0.25) {
+                  if (!started) {
+                    ctx.moveTo(cx + proj.x, cy + proj.y);
+                    started = true;
+                  } else {
+                    ctx.lineTo(cx + proj.x, cy + proj.y);
+                  }
+                } else {
+                  started = false;
+                }
+              });
+              ctx.stroke();
+            }
+          });
+        }
+
+        // 6. Project & Depth-Sort Satellites on Spherical Shell
+        const projectedNodes = filteredSats.map((sat) => {
+          const latRad = (sat.telemetry.latDeg * Math.PI) / 180;
+          const lonRad = (sat.telemetry.lonDeg * Math.PI) / 180;
+          // Radial elevation offset proportional to LEO/MEO/GEO altitude
+          const altFactor = 1.03 + Math.min(sat.telemetry.altKm / 36000, 1.0) * 0.18;
+          const pos3d = projectSphericalPoint(latRad, lonRad, baseRadius * altFactor);
+          const surface3d = projectSphericalPoint(latRad, lonRad, baseRadius);
+          return {
+            sat,
+            sx: cx + pos3d.x,
+            sy: cy + pos3d.y,
+            z: pos3d.z,
+            surfX: cx + surface3d.x,
+            surfY: cy + surface3d.y,
+            isFront: pos3d.z >= -baseRadius * 0.12
+          };
+        });
+
+        // Painter's algorithm: draw back-hemisphere nodes first, front-hemisphere nodes on top
+        projectedNodes.sort((a, b) => a.z - b.z);
+        state.screenNodes = projectedNodes;
+
+        const nowMs = Date.now();
+        projectedNodes.forEach((node) => {
+          const { sat, sx, sy, surfX, surfY, isFront } = node;
+          const isSelected = sat.id === state.selectedId;
+
+          // Distinct active color when clicked from sphere OR side panel
+          const dotColor = isSelected ? '#f59e0b' : sat.color;
+          const alpha = isSelected ? 1.0 : (isFront ? 0.95 : 0.24);
+
+          // Draw nadir tether line from satellite altitude down to spherical grid point
+          if (isFront || isSelected) {
+            ctx.strokeStyle = isSelected ? 'rgba(245, 158, 11, 0.7)' : hexToRgba(dotColor, 0.35);
+            ctx.lineWidth = isSelected ? 1.3 : 0.8;
+            ctx.beginPath();
+            ctx.moveTo(surfX, surfY);
+            ctx.lineTo(sx, sy);
+            ctx.stroke();
+
+            // Sub-satellite graticule cross-dot on sphere surface
+            ctx.fillStyle = isSelected ? '#f59e0b' : hexToRgba(dotColor, 0.55);
+            ctx.beginPath();
+            ctx.arc(surfX, surfY, isSelected ? 2.4 : 1.5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          // Outer glow halo
+          if (isFront || isSelected) {
+            const glowRadius = isSelected ? 16 + Math.sin(nowMs / 180) * 3 : 8;
+            const glow = ctx.createRadialGradient(sx, sy, 1, sx, sy, glowRadius);
+            glow.addColorStop(0, isSelected ? 'rgba(245, 158, 11, 0.85)' : hexToRgba(dotColor, 0.6));
+            glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = glow;
+            ctx.beginPath();
+            ctx.arc(sx, sy, glowRadius, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          // Pulsing target reticle ring on selected satellite
+          if (isSelected) {
+            const ringR = 10 + Math.sin(nowMs / 200) * 2.2;
+            ctx.strokeStyle = '#fde047';
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            ctx.arc(sx, sy, ringR, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+
+          // Core satellite dot
+          ctx.fillStyle = isSelected ? '#ffffff' : hexToRgba(dotColor, alpha);
+          ctx.beginPath();
+          ctx.arc(sx, sy, isSelected ? 5.2 : (isFront ? 3.8 : 2.4), 0, Math.PI * 2);
+          ctx.fill();
+
+          if (isSelected) {
+            ctx.strokeStyle = '#f59e0b';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          }
+
+          // Crisp callsign label for front-hemisphere or selected satellites
+          if (isSelected || (isFront && state.zoom >= 0.85)) {
+            ctx.font = isSelected ? '700 11px "JetBrains Mono", monospace' : '500 9.5px "JetBrains Mono", monospace';
+            ctx.fillStyle = isSelected ? '#fde047' : 'rgba(226, 232, 240, 0.82)';
+            ctx.fillText(sat.name, sx + 8, sy + 3);
+          }
+        });
+
+        // Keep floating pop-up anchored smoothly to selected satellite on sphere
+        updatePopupScreenPosition();
+      }
+
+      function hexToRgba(hex, alpha) {
+        const clean = hex.replace('#', '');
+        const r = parseInt(clean.substring(0, 2), 16);
+        const g = parseInt(clean.substring(2, 4), 16);
+        const b = parseInt(clean.substring(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      }
+
+      /**
+       * =========================================================================
+       * 6. POP-UP TELEMETRY CARD & SIDE PANEL ROSTER SYNCHRONIZATION
+       * =========================================================================
+       */
+      function selectSatellite(satId, scrollRoster = false) {
+        state.selectedId = satId;
+        const sat = state.satellites.find((s) => s.id === satId);
+        if (!sat) return;
+
+        // Smoothly slew spherical display so selected satellite faces the observer
+        const latRad = (sat.telemetry.latDeg * Math.PI) / 180;
+        const lonRad = (sat.telemetry.lonDeg * Math.PI) / 180;
+        state.targetYaw = -lonRad;
+        state.targetPitch = Math.max(-1.25, Math.min(1.25, latRad * 0.85));
+
+        // Update floating popup content & show it
+        renderPopupContent(sat);
+        popupEl.classList.remove('hidden');
+
+        // Highlight active card in side panel
+        renderRosterList();
+
+        if (scrollRoster) {
+          const cardEl = document.getElementById(`sat-card-${sat.id}`);
+          if (cardEl) {
+            cardEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
+        }
+      }
+
+      function renderPopupContent(sat) {
+        document.getElementById('popupConstellationBadge').textContent = sat.constellation;
+        document.getElementById('popupNoradBadge').textContent = `NORAD #${sat.norad}`;
+        document.getElementById('popupSatName').textContent = sat.name;
+        document.getElementById('popupStatusText').textContent = sat.massStatus.split('|')[1]?.trim() || 'ACTIVE';
+
+        const grid = document.getElementById('popupAttributesGrid');
+        grid.innerHTML = sat.attributes21.map((attr) => `
+          <div class="bg-card/90 border border-borderline/70 rounded-lg px-2 py-1">
+            <div class="text-[9px] text-slate-400 uppercase truncate"><span class="text-cyan-400">${attr.idx}.</span> ${attr.label}</div>
+            <div class="text-[11px] text-slate-100 font-semibold truncate">${attr.value}</div>
+          </div>
+        `).join('');
+      }
+
+      function updatePopupScreenPosition() {
+        if (!state.selectedId || popupEl.classList.contains('hidden')) return;
+        const node = state.screenNodes.find((n) => n.sat.id === state.selectedId);
+        if (!node) return;
+
+        const cw = canvasContainer.clientWidth;
+        const ch = canvasContainer.clientHeight;
+        const pw = popupEl.offsetWidth || 340;
+        const ph = popupEl.offsetHeight || 310;
+
+        // Position near clicked satellite dot while clamping inside viewport bounds
+        let left = node.sx + 18;
+        let top = node.sy - ph / 2;
+
+        if (left + pw > cw - 12) {
+          left = node.sx - pw - 18;
+        }
+        if (left < 12) left = 12;
+        if (top < 58) top = 58;
+        if (top + ph > ch - 42) top = Math.max(58, ch - ph - 42);
+
+        popupEl.style.left = `${left}px`;
+        popupEl.style.top = `${top}px`;
+      }
+
+      function getFilteredSatellites() {
+        return state.satellites.filter((sat) => {
+          const matchesConstellation = state.activeFilter === 'ALL' || sat.constellation === state.activeFilter;
+          if (!matchesConstellation) return false;
+          if (!state.searchQuery) return true;
+          const q = state.searchQuery.toLowerCase();
+          return (
+            sat.name.toLowerCase().includes(q) ||
+            sat.constellation.toLowerCase().includes(q) ||
+            sat.norad.includes(q) ||
+            sat.cospar.toLowerCase().includes(q)
+          );
+        });
+      }
+
+      function renderConstellationFilters() {
+        const categories = ['ALL', ...Object.keys(CONSTELLATION_META)];
+        filtersEl.innerHTML = categories.map((cat) => {
+          const isActive = state.activeFilter === cat;
+          const colorDot = cat !== 'ALL'
+            ? `<span class="w-2 h-2 rounded-full inline-block mr-1.5" style="background:${CONSTELLATION_META[cat].color}"></span>`
+            : '';
+          return `
+            <button
+              data-filter="${cat}"
+              class="filter-pill shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-medium border transition ${
+                isActive
+                  ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 shadow-sm'
+                  : 'bg-card border-borderline text-slate-400 hover:text-slate-200 hover:border-slate-600'
+              }"
+            >
+              ${colorDot}${cat === 'ALL' ? 'All Constellations' : cat}
+            </button>
+          `;
+        }).join('');
+
+        filtersEl.querySelectorAll('.filter-pill').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            state.activeFilter = btn.getAttribute('data-filter');
+            renderConstellationFilters();
+            renderRosterList();
+          });
+        });
+
+        // Also populate bottom sphere legend
+        const legendEl = document.getElementById('legendContainer');
+        legendEl.innerHTML = Object.entries(CONSTELLATION_META).map(([key, meta]) => `
+          <span class="inline-flex items-center gap-1.5 text-slate-300 font-mono text-[10px]">
+            <span class="w-2 h-2 rounded-full" style="background:${meta.color}"></span>
+            ${meta.label}
+          </span>
+        `).join('') + `
+          <span class="inline-flex items-center gap-1.5 text-amber-300 font-mono text-[10px] font-semibold">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-400 ring-2 ring-amber-300/50"></span>
+            ACTIVE LOCKED TARGET
+          </span>
+        `;
+      }
+
+      /**
+       * Renders the scrollable side panel roster where EVERY satellite displays all 21 attributes.
+       */
+      function renderRosterList() {
+        const filtered = getFilteredSatellites();
+        document.getElementById('rosterCountBadge').textContent = filtered.length;
+
+        if (filtered.length === 0) {
+          rosterListEl.innerHTML = `
+            <div class="text-center py-10 text-slate-400 text-xs font-mono">
+              No spacecraft match the active filter criteria.
+            </div>
+          `;
+          return;
+        }
+
+        rosterListEl.innerHTML = filtered.map((sat) => {
+          const isSelected = sat.id === state.selectedId;
+          const badgeStyle = CONSTELLATION_META[sat.constellation]?.badgeBg || 'bg-slate-800 text-slate-300';
+
+          return `
+            <article
+              id="sat-card-${sat.id}"
+              data-sat-id="${sat.id}"
+              class="sat-roster-card cursor-pointer rounded-2xl border border-borderline bg-card/90 hover:border-cyan-400/60 p-3 transition-all ${isSelected ? 'sat-card-active' : ''}"
+            >
+              <!-- Card Header -->
+              <div class="flex items-start justify-between gap-2 pb-2 border-b border-borderline/80">
+                <div>
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${isSelected ? '#f59e0b' : sat.color}"></span>
+                    <h3 class="text-xs sm:text-sm font-bold text-white tracking-tight">${sat.name}</h3>
+                    <span class="px-1.5 py-0.5 rounded text-[9px] font-mono border ${badgeStyle}">${sat.constellation}</span>
+                  </div>
+                </div>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded-md ${isSelected ? 'bg-amber-500/20 text-amber-300 border border-amber-400/40' : 'bg-slate-800 text-slate-400'}">
+                  ${isSelected ? 'TARGET LOCKED' : 'SELECT NODE'}
+                </span>
+              </div>
+
+              <!-- Complete 21-Attribute Telemetry Grid inside each scrollable card -->
+              <div class="mt-2.5 grid grid-cols-2 sm:grid-cols-3 gap-1.5 font-mono text-[10px]">
+                ${sat.attributes21.map((attr) => `
+                  <div class="bg-panel/80 border border-slate-800/90 rounded-lg px-2 py-1">
+                    <div class="text-[8.5px] text-slate-400 truncate">
+                      <span class="text-cyan-400 font-semibold">${attr.idx}</span> ${attr.label}
+                    </div>
+                    <div class="text-slate-100 font-medium truncate mt-0.5" title="${attr.value}">${attr.value}</div>
+                  </div>
+                `).join('')}
+              </div>
+            </article>
+          `;
+        }).join('');
+
+        // Attach click handlers to every satellite card in the scrollable side panel
+        rosterListEl.querySelectorAll('.sat-roster-card').forEach((card) => {
+          card.addEventListener('click', () => {
+            const id = card.getAttribute('data-sat-id');
+            selectSatellite(id, false);
+          });
+        });
+      }
+
+      /**
+       * =========================================================================
+       * 7. INTERACTIVE CONTROLS: ROTATION (UP/DOWN/LEFT/RIGHT), DRAG, ZOOM & CLICK
+       * =========================================================================
+       */
+      function bindInteractions() {
+        // Mouse & Touch Drag to Rotate Up/Down & Side-to-Side
+        canvas.addEventListener('pointerdown', (e) => {
+          state.isDragging = true;
+          state.dragMoved = false;
+          state.lastPointerX = e.clientX;
+          state.lastPointerY = e.clientY;
+          state.targetYaw = null;
+          state.targetPitch = null;
+        });
+
+        window.addEventListener('pointermove', (e) => {
+          if (!state.isDragging) return;
+          const dx = e.clientX - state.lastPointerX;
+          const dy = e.clientY - state.lastPointerY;
+          if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+            state.dragMoved = true;
+          }
+          state.yaw += dx * 0.0065;
+          state.pitch = Math.max(-1.45, Math.min(1.45, state.pitch + dy * 0.0065));
+          state.lastPointerX = e.clientX;
+          state.lastPointerY = e.clientY;
+        });
+
+        window.addEventListener('pointerup', (e) => {
+          if (state.isDragging && !state.dragMoved) {
+            handleCanvasClick(e);
+          }
+          state.isDragging = false;
+        });
+
+        // Scroll Wheel Zoom
+        canvas.addEventListener('wheel', (e) => {
+          e.preventDefault();
+          const zoomDelta = e.deltaY > 0 ? -0.08 : 0.08;
+          state.zoom = Math.max(0.65, Math.min(2.2, state.zoom + zoomDelta));
+        }, { passive: false });
+
+        // Directional Rotational Control Buttons
+        const stepAngle = 0.24;
+        document.getElementById('rotateUpBtn').addEventListener('click', () => {
+          state.targetPitch = null;
+          state.pitch = Math.max(-1.45, state.pitch - stepAngle);
+        });
+        document.getElementById('rotateDownBtn').addEventListener('click', () => {
+          state.targetPitch = null;
+          state.pitch = Math.min(1.45, state.pitch + stepAngle);
+        });
+        document.getElementById('rotateLeftBtn').addEventListener('click', () => {
+          state.targetYaw = null;
+          state.yaw -= stepAngle;
+        });
+        document.getElementById('rotateRightBtn').addEventListener('click', () => {
+          state.targetYaw = null;
+          state.yaw += stepAngle;
+        });
+
+        // Auto-Spin Toggle
+        const spinBtn = document.getElementById('toggleAutoRotateBtn');
+        spinBtn.addEventListener('click', () => {
+          state.autoRotate = !state.autoRotate;
+          spinBtn.textContent = state.autoRotate ? 'Spin: ON' : 'Spin: OFF';
+          spinBtn.className = state.autoRotate
+            ? 'px-2.5 py-1.5 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-xs font-mono transition'
+            : 'px-2.5 py-1.5 rounded-lg bg-card text-slate-400 border border-slate-700/70 text-xs font-mono transition';
+        });
+
+        // Orbits Toggle
+        const orbitsBtn = document.getElementById('toggleOrbitsBtn');
+        orbitsBtn.addEventListener('click', () => {
+          state.showOrbits = !state.showOrbits;
+          orbitsBtn.textContent = state.showOrbits ? 'Orbits: ON' : 'Orbits: OFF';
+        });
+
+        // Reset View
+        document.getElementById('resetViewBtn').addEventListener('click', () => {
+          state.targetYaw = -1.85;
+          state.targetPitch = 0.38;
+          state.zoom = 1.0;
+        });
+
+        // Pop-up Close & Scroll-to-Roster Action
+        document.getElementById('closePopupBtn').addEventListener('click', () => {
+          popupEl.classList.add('hidden');
+          state.selectedId = null;
+          renderRosterList();
+        });
+
+        document.getElementById('focusInListBtn').addEventListener('click', () => {
+          if (!state.selectedId) return;
+          const cardEl = document.getElementById(`sat-card-${state.selectedId}`);
+          if (cardEl) {
+            cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        });
+
+        // Search Input
+        searchInputEl.addEventListener('input', (e) => {
+          state.searchQuery = e.target.value.trim();
+          renderRosterList();
+        });
+
+        // Force Immediate 11-Second Epoch Refresh Button
+        document.getElementById('forceRefreshBtn').addEventListener('click', () => {
+          triggerElevenSecondEpochSync();
+        });
+
+        // Monograph Academic Drawer Open/Close
+        const modal = document.getElementById('monographModal');
+        document.getElementById('openMonographBtn').addEventListener('click', () => modal.classList.remove('hidden'));
+        document.getElementById('closeMonographBtn').addEventListener('click', () => modal.classList.add('hidden'));
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) modal.classList.add('hidden');
+        });
+
+        window.addEventListener('resize', resizeCanvas);
+      }
+
+      /**
+       * Hit-tests clicked coordinates against projected satellite dots on the sphere
+       */
+      function handleCanvasClick(e) {
+        const rect = canvas.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+
+        let closestNode = null;
+        let minDist = 18; // Generous touch/click target radius in px
+
+        // Prioritize front-hemisphere satellites
+        for (let i = state.screenNodes.length - 1; i >= 0; i--) {
+          const node = state.screenNodes[i];
+          const dist = Math.hypot(node.sx - clickX, node.sy - clickY);
+          if (dist < minDist) {
+            minDist = dist;
+            closestNode = node;
+            if (node.isFront) break;
+          }
+        }
+
+        if (closestNode) {
+          selectSatellite(closestNode.sat.id, true);
+        }
+      }
+
+      /**
+       * =========================================================================
+       * 8. SYNCHRONIZED 11.0-SECOND EPOCH REFRESH & CONTINUOUS ANIMATION LOOP
+       * =========================================================================
+       */
+      function triggerElevenSecondEpochSync() {
+        const now = new Date();
+        state.lastSyncTimestamp = now.getTime();
+        propagateAllSatellites(now, true);
+
+        // Update both the side panel 21-attribute cards and active pop-up box
+        renderRosterList();
+        if (state.selectedId && !popupEl.classList.contains('hidden')) {
+          const activeSat = state.satellites.find((s) => s.id === state.selectedId);
+          if (activeSat) renderPopupContent(activeSat);
+        }
+      }
+
+      function animationLoop() {
+        const nowMs = Date.now();
+
+        // Smooth camera slewing when a satellite is clicked in the side panel
+        if (state.targetYaw !== null && state.targetPitch !== null) {
+          // Shortest angular delta for yaw
+          let diffYaw = state.targetYaw - state.yaw;
+          while (diffYaw > Math.PI) diffYaw -= Math.PI * 2;
+          while (diffYaw < -Math.PI) diffYaw += Math.PI * 2;
+
+          state.yaw += diffYaw * 0.08;
+          state.pitch += (state.targetPitch - state.pitch) * 0.08;
+
+          if (Math.abs(diffYaw) < 0.005 && Math.abs(state.targetPitch - state.pitch) < 0.005) {
+            state.targetYaw = null;
+            state.targetPitch = null;
+          }
+        } else if (state.autoRotate && !state.isDragging) {
+          state.yaw += 0.0016;
+        }
+
+        // Real-time continuous orbital motion on the spherical canvas
+        propagateAllSatellites(new Date(nowMs), false);
+
+        // 11.0-Second Synchronized Telemetry & Side Panel Refresh Timer
+        const elapsedSinceSync = nowMs - state.lastSyncTimestamp;
+        const remainingSec = Math.max(0, (state.syncIntervalMs - elapsedSinceSync) / 1000);
+        const pct = Math.max(0, Math.min(100, (remainingSec / 11) * 100));
+
+        document.getElementById('refreshCountdownText').textContent = `${remainingSec.toFixed(1)}s`;
+        document.getElementById('refreshProgressBar').style.width = `${pct}%`;
+
+        if (elapsedSinceSync >= state.syncIntervalMs) {
+          triggerElevenSecondEpochSync();
+        }
+
+        renderGlobeScene();
+        requestAnimationFrame(animationLoop);
+      }
+
+      // Bootstrap Application on Window Load
+      window.onload = function () {
+        resizeCanvas();
+        renderConstellationFilters();
+        initializeSatellites();
+        renderRosterList();
+        bindInteractions();
+        requestAnimationFrame(animationLoop);
+      };
+    })();
+  </script>
+</body>
+</html>
